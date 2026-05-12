@@ -9,11 +9,10 @@ services:
       replicas: 1
       labels:
         - "traefik.enable=true"
-        - "traefik.http.routers.notas-app-secure.entrypoints=websecure"
-        - "traefik.http.routers.notas-app-secure.rule=Host(`notas.autozapx.com`)"
-        - "traefik.http.routers.notas-app-secure.tls=true"
-        - "traefik.http.routers.notas-app.entrypoints=web"
+        - "traefik.docker.network=Monadanet"
+        - "traefik.http.routers.notas-app.entrypoints=websecure"
         - "traefik.http.routers.notas-app.rule=Host(`notas.autozapx.com`)"
+        - "traefik.http.routers.notas-app.tls.certresolver=letsencryptresolver"
         - "traefik.http.services.notas-app.loadbalancer.server.port=8501"
 
 networks:

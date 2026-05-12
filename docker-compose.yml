@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  app:
+    image: notas-app:latest
+    networks:
+      - traefik-public
+    deploy:
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.notas-app.rule=Host(`notas.autozapx.com`)"
+        - "traefik.http.routers.notas-app.entrypoints=websecure"
+        - "traefik.http.routers.notas-app.tls=true"
+        - "traefik.http.routers.notas-app.tls.certresolver=letsencrypt" # Assumindo o resolver padrão
+        - "traefik.http.services.notas-app.loadbalancer.server.port=8501"
+
+networks:
+  traefik-public:
+    external: true

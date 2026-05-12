@@ -4,7 +4,7 @@ services:
   app:
     image: notas-app:latest
     networks:
-      - traefik-public
+      - Monadanet
     deploy:
       replicas: 1
       labels:
@@ -16,5 +16,5 @@ services:
         - "traefik.http.services.notas-app.loadbalancer.server.port=8501"
 
 networks:
-  traefik-public:
+  Monadanet:
     external: true

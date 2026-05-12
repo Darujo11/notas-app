@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import pdfplumber
 import io
+from fpdf import FPDF
 
 st.set_page_config(page_title="Analisador de Notas Fiscais", layout="wide", page_icon="📄")
 
@@ -111,15 +112,100 @@ def prepare_dataframe(df):
 
     return df
 
+def generate_text_report(df):
+    """Gera um relatório em texto agrupado por Tomador e Contrato."""
+    report = []
+    group_cols = ['Tomador de Serviços', 'CNPJ', 'CONTRATO'] if 'CNPJ' in df.columns else ['Tomador de Serviços', 'CONTRATO']
+    
+    # Verifica se as colunas existem
+    for col in group_cols:
+        if col not in df.columns:
+            return "Colunas necessárias não encontradas para gerar o relatório."
+            
+    # Ordenar para garantir consistência
+    df_sorted = df.sort_values(by=group_cols)
+    grouped = df_sorted.groupby(group_cols)
+    
+    for name, group in grouped:
+        if isinstance(name, tuple):
+            tomador = name[0]
+            cnpj = name[1] if 'CNPJ' in df.columns else ""
+            contrato = name[2] if 'CNPJ' in df.columns else name[1]
+        else:
+            tomador = name
+            cnpj = ""
+            contrato = ""
+            
+        report.append("Tomador de Serviço CNPJ Contrato(s) Identificado(s)")
+        report.append(f"{tomador} {cnpj} {contrato}")
+        report.append("Notas fiscais correspondentes:")
+        
+        for i, row in enumerate(group.itertuples()):
+            nota = getattr(row, 'Nota', 'N/A')
+            report.append(f"{i+1}. NFS-e nº {nota}")
+        report.append("-" * 20)
+        
+    return "\n".join(report)
+
+def generate_pdf_report(df):
+    """Gera um relatório em PDF agrupado por Tomador e Contrato."""
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=10)
+    
+    group_cols = ['Tomador de Serviços', 'CNPJ', 'CONTRATO'] if 'CNPJ' in df.columns else ['Tomador de Serviços', 'CONTRATO']
+    
+    for col in group_cols:
+        if col not in df.columns:
+            pdf.cell(200, 10, txt="Colunas necessárias não encontradas para gerar o relatório.", ln=1)
+            return pdf.output()
+            
+    df_sorted = df.sort_values(by=group_cols)
+    grouped = df_sorted.groupby(group_cols)
+    
+    for name, group in grouped:
+        if isinstance(name, tuple):
+            tomador = name[0]
+            cnpj = name[1] if 'CNPJ' in df.columns else ""
+            contrato = name[2] if 'CNPJ' in df.columns else name[1]
+        else:
+            tomador = name
+            cnpj = ""
+            contrato = ""
+            
+        pdf.set_font("Helvetica", style="B", size=10)
+        pdf.cell(200, 10, txt="Tomador de Serviço CNPJ Contrato(s) Identificado(s)", ln=1)
+        pdf.set_font("Helvetica", size=10)
+        pdf.cell(200, 10, txt=f"{tomador} {cnpj} {contrato}", ln=1)
+        pdf.set_font("Helvetica", style="I", size=10)
+        pdf.cell(200, 10, txt="Notas fiscais correspondentes:", ln=1)
+        pdf.set_font("Helvetica", size=10)
+        
+        for i, row in enumerate(group.itertuples()):
+            nota = getattr(row, 'Nota', 'N/A')
+            pdf.cell(200, 10, txt=f"{i+1}. NFS-e nº {nota}", ln=1)
+            
+        pdf.cell(200, 5, txt="-" * 20, ln=1)
+        pdf.ln(5)
+        
+    return pdf.output()
+
 
 # === INTERFACE ===
 st.title("📊 Analisador de Notas Fiscais (PDF)")
 st.markdown("Faça o upload do seu relatório de Notas Fiscais em PDF para extrair, analisar e agrupar os dados por **Tomador de Serviços** e **Contrato**.")
 
-uploaded_file = st.file_uploader("Arraste e solte o seu arquivo PDF aqui", type=["pdf"])
+if 'uploader_key' not in st.session_state:
+    st.session_state.uploader_key = 0
+
+uploaded_file = st.file_uploader("Arraste e solte o seu arquivo PDF aqui", type=["pdf"], key=f"uploader_{st.session_state.uploader_key}")
 
 if uploaded_file is not None:
     st.info(f"Processando arquivo: {uploaded_file.name}")
+    
+    if st.button("🔄 Nova Análise"):
+        st.session_state.uploader_key += 1
+        st.rerun()
     
     try:
         # 1. Extração
@@ -200,46 +286,29 @@ if uploaded_file is not None:
             st.divider()
             st.subheader("📥 Exportar Dados")
             
-            st.write("Se o CSV abrir desformatado no seu Excel, tente trocar o separador abaixo:")
-            separador = st.radio("Separador do arquivo CSV:", ["; (Recomendado para Excel no Brasil)", ", (Padrão Internacional)"], horizontal=True)
-            sep_char = ';' if ';' in separador else ','
-            
-            col_csv_agrup, col_csv_detalhe, col_excel = st.columns([2, 2, 2])
+            col_txt, col_pdf = st.columns([1, 1])
             
             # Limpar nome do arquivo
             nome_arquivo_tomador = "Todos" if tomador_selecionado == "Todos" else tomador_selecionado.replace(" ", "_").replace("/", "").replace(".", "")
             
-            # Botão CSV (Agrupado)
-            if 'Tomador de Serviços' in df.columns and 'CONTRATO' in df.columns:
-                csv_agrup = grouped.to_csv(index=False, sep=sep_char, encoding='utf-8-sig').encode('utf-8-sig')
-                col_csv_agrup.download_button(
-                    label="Baixar CSV (Resumo Agrupado)",
-                    data=csv_agrup,
-                    file_name=f'resumo_agrupado_{nome_arquivo_tomador[:20]}.csv',
-                    mime='text/csv',
-                )
-                
-            # Botão CSV (Detalhado)
-            csv_detalhe = df_filtered.to_csv(index=False, sep=sep_char, encoding='utf-8-sig').encode('utf-8-sig')
-            col_csv_detalhe.download_button(
-                label="Baixar CSV (Detalhado)",
-                data=csv_detalhe,
-                file_name=f'notas_detalhadas_{nome_arquivo_tomador[:20]}.csv',
-                mime='text/csv',
+            # Botão Relatório TXT (Semelhante ao ANALISE 1.pdf)
+            report_txt = generate_text_report(df_filtered)
+            col_txt.download_button(
+                label="Baixar Relatório (TXT)",
+                data=report_txt,
+                file_name=f'analise_conforme_modelo_{nome_arquivo_tomador[:20]}.txt',
+                mime='text/plain',
+                use_container_width=True
             )
-            
-            # Botão Excel
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                df_filtered.to_excel(writer, index=False, sheet_name='Notas_Filtradas')
-                if 'Tomador de Serviços' in df.columns and 'CONTRATO' in df.columns:
-                    grouped.to_excel(writer, index=False, sheet_name='Agrupamento_Filtrado')
-                    
-            col_excel.download_button(
-                label="Baixar Excel (.xlsx)",
-                data=buffer.getvalue(),
-                file_name=f'notas_extraidas_{nome_arquivo_tomador[:20]}.xlsx',
-                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+            # Botão Relatório PDF (Semelhante ao ANALISE 1.pdf)
+            report_pdf = generate_pdf_report(df_filtered)
+            col_pdf.download_button(
+                label="Baixar Relatório (PDF)",
+                data=bytes(report_pdf),
+                file_name=f'analise_conforme_modelo_{nome_arquivo_tomador[:20]}.pdf',
+                mime='application/pdf',
+                use_container_width=True
             )
             
     except Exception as e:

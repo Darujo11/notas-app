@@ -193,6 +193,7 @@ def generate_pdf_report(df):
 
 # === INTERFACE ===
 st.title("📊 Analisador de Notas Fiscais (PDF)")
+st.caption("Versão 1.1.0")
 st.markdown("Faça o upload do seu relatório de Notas Fiscais em PDF para extrair, analisar e agrupar os dados por **Tomador de Serviços** e **Contrato**.")
 
 if 'uploader_key' not in st.session_state:
